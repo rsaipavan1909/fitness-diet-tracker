@@ -26,23 +26,32 @@ st.markdown(
         font-size: 38px;
         font-weight: 800;
         margin-bottom: 5px;
+        color: #1f2937 !important;
     }
+
     .info-box {
-        background-color: #f3f6fb;
+        background-color: #f3f6fb !important;
+        color: #1f2937 !important;
         padding: 14px 18px;
         border-radius: 10px;
         border: 1px solid #e1e7f0;
         margin-bottom: 18px;
     }
+
+    .info-box b {
+        color: #0b57d0 !important;
+    }
+
     .readonly-badge {
         display: inline-block;
-        background-color: #eaf2ff;
-        color: #0b57d0;
+        background-color: #eaf2ff !important;
+        color: #0b57d0 !important;
         padding: 6px 12px;
         border-radius: 20px;
         font-weight: 600;
         margin-bottom: 10px;
     }
+
     section[data-testid="stSidebar"] button {
         border: 1px solid #d7dee8;
         border-radius: 10px;
@@ -50,7 +59,9 @@ st.markdown(
         text-align: left;
         font-weight: 600;
         background-color: white;
+        color: #1f2937;
     }
+
     section[data-testid="stSidebar"] button:hover {
         border-color: #0b57d0;
         color: #0b57d0;
