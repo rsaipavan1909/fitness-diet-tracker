@@ -2,7 +2,8 @@ import streamlit as st
 from datetime import date
 
 from database import (
-    init_db,
+    create_user,
+    login_user,
     add_workout,
     add_diet,
     get_workouts,
@@ -16,8 +17,6 @@ st.set_page_config(
     page_icon="🏋️",
     layout="wide",
 )
-
-init_db()
 
 st.markdown(
     """
@@ -71,10 +70,109 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-st.sidebar.title("🏋️ Fitness & Diet Tracker")
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+if "user" not in st.session_state:
+    st.session_state.user = None
 
 if "menu" not in st.session_state:
     st.session_state.menu = "Weight Record Table"
+
+
+def logout():
+    st.session_state.logged_in = False
+    st.session_state.user = None
+    st.session_state.menu = "Weight Record Table"
+    st.session_state.edit_mode = False
+    st.session_state.confirm_edit = False
+    st.session_state.confirm_save = False
+    st.rerun()
+
+
+def auth_screen():
+    st.markdown(
+        '<div class="main-title">🏋️ Fitness & Diet Tracker</div>',
+        unsafe_allow_html=True,
+    )
+    st.write("Create an account or log in to track your workouts and diet.")
+
+    tab1, tab2 = st.tabs(["Login", "Sign Up"])
+
+    with tab1:
+        st.subheader("Login")
+
+        with st.form("login_form"):
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password")
+            login_btn = st.form_submit_button("Login")
+
+            if login_btn:
+                if not username or not password:
+                    st.error("Please enter username and password.")
+                else:
+                    success, user, message = login_user(username, password)
+
+                    if success:
+                        st.session_state.logged_in = True
+                        st.session_state.user = {
+                            "id": str(user["id"]),
+                            "name": user["name"],
+                            "username": user["username"],
+                        }
+                        st.success(message)
+                        st.rerun()
+                    else:
+                        st.error(message)
+
+    with tab2:
+        st.subheader("Sign Up")
+
+        with st.form("signup_form"):
+            name = st.text_input("Name")
+            username = st.text_input("Username")
+            password = st.text_input("Password", type="password", key="signup_password")
+            confirm_password = st.text_input("Confirm Password", type="password")
+            invite_code = st.text_input("Invite Code", type="password")
+            signup_btn = st.form_submit_button("Create Account")
+
+            if signup_btn:
+                username_clean = username.lower().strip()
+
+                if not name or not username or not password or not confirm_password or not invite_code:
+                    st.error("Please fill all fields.")
+                elif " " in username_clean:
+                    st.error("Username cannot contain spaces.")
+                elif len(username_clean) < 3:
+                    st.error("Username must be at least 3 characters.")
+                elif password != confirm_password:
+                    st.error("Passwords do not match.")
+                elif invite_code != st.secrets["INVITE_CODE"]:
+                    st.error("Invalid invite code.")
+                elif len(password) < 6:
+                    st.error("Password must be at least 6 characters.")
+                else:
+                    success, message = create_user(name, username_clean, password)
+
+                    if success:
+                        st.success("Account created. Please log in now.")
+                    else:
+                        st.error(message)
+
+
+if not st.session_state.logged_in:
+    auth_screen()
+    st.stop()
+
+
+user_id = st.session_state.user["id"]
+user_name = st.session_state.user["name"]
+username = st.session_state.user["username"]
+today = date.today()
+
+st.sidebar.title("🏋️ Fitness & Diet Tracker")
+st.sidebar.write(f"Logged in as: **{user_name}**")
+st.sidebar.caption(f"Username: `{username}`")
 
 st.sidebar.markdown("### Menu")
 
@@ -87,11 +185,17 @@ if st.sidebar.button("🍽️ Diet Record Table", use_container_width=True):
 if st.sidebar.button("📋 Previous Entries", use_container_width=True):
     st.session_state.menu = "Previous Entries"
 
+st.sidebar.divider()
+
+if st.sidebar.button("Logout", use_container_width=True):
+    logout()
+
 menu = st.session_state.menu
 
-today = date.today()
-
-st.markdown('<div class="main-title">Fitness & Diet Tracker</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="main-title">Fitness & Diet Tracker</div>',
+    unsafe_allow_html=True,
+)
 st.markdown(
     f'<div class="info-box">📅 Date auto-updates daily: <b>{today}</b></div>',
     unsafe_allow_html=True,
@@ -121,13 +225,24 @@ if menu == "Weight Record Table":
             if not exercise.strip():
                 st.error("Please enter the exercise name.")
             else:
-                add_workout(str(today), exercise.strip(), sets, reps, weight, notes.strip())
+                add_workout(
+                    user_id,
+                    today,
+                    exercise.strip(),
+                    sets,
+                    reps,
+                    weight,
+                    notes.strip(),
+                )
                 st.success("Workout record saved.")
 
     st.subheader("Today's Workout Records")
-    workouts = get_workouts()
-    today_workouts = workouts[workouts["date"] == str(today)]
-    st.dataframe(today_workouts.drop(columns=["id"], errors="ignore"), use_container_width=True)
+    workouts = get_workouts(user_id)
+    today_workouts = workouts[workouts["date"].astype(str) == str(today)]
+    st.dataframe(
+        today_workouts.drop(columns=["id"], errors="ignore"),
+        use_container_width=True,
+    )
 
 
 elif menu == "Diet Record Table":
@@ -167,7 +282,8 @@ elif menu == "Diet Record Table":
                 st.error("Please enter the food item.")
             else:
                 add_diet(
-                    str(today),
+                    user_id,
+                    today,
                     meal_type,
                     food_item.strip(),
                     quantity.strip(),
@@ -180,17 +296,23 @@ elif menu == "Diet Record Table":
                 st.success("Diet record saved.")
 
     st.subheader("Today's Diet Records")
-    diet = get_diet()
-    today_diet = diet[diet["date"] == str(today)]
-    st.dataframe(today_diet.drop(columns=["id"], errors="ignore"), use_container_width=True)
+    diet = get_diet(user_id)
+    today_diet = diet[diet["date"].astype(str) == str(today)]
+    st.dataframe(
+        today_diet.drop(columns=["id"], errors="ignore"),
+        use_container_width=True,
+    )
 
 
 elif menu == "Previous Entries":
     st.header("Previous Entries")
-    st.markdown('<span class="readonly-badge">🔒 Read-only mode by default</span>', unsafe_allow_html=True)
+    st.markdown(
+        '<span class="readonly-badge">🔒 Read-only mode by default</span>',
+        unsafe_allow_html=True,
+    )
 
-    workouts = get_workouts()
-    diet = get_diet()
+    workouts = get_workouts(user_id)
+    diet = get_diet(user_id)
 
     if "edit_mode" not in st.session_state:
         st.session_state.edit_mode = False
@@ -214,16 +336,23 @@ elif menu == "Previous Entries":
                 st.session_state.edit_mode = True
                 st.session_state.confirm_edit = False
                 st.success("Editing is now enabled.")
+
         with c2:
             if st.button("Cancel"):
                 st.session_state.confirm_edit = False
 
     if not st.session_state.edit_mode:
         st.subheader("Workout History")
-        st.dataframe(workouts.drop(columns=["id"], errors="ignore"), use_container_width=True)
+        st.dataframe(
+            workouts.drop(columns=["id"], errors="ignore"),
+            use_container_width=True,
+        )
 
         st.subheader("Diet History")
-        st.dataframe(diet.drop(columns=["id"], errors="ignore"), use_container_width=True)
+        st.dataframe(
+            diet.drop(columns=["id"], errors="ignore"),
+            use_container_width=True,
+        )
 
     else:
         st.info("Edit mode is active. Review your changes carefully before saving.")
@@ -256,8 +385,8 @@ elif menu == "Previous Entries":
 
             with c1:
                 if st.button("Yes, save permanently"):
-                    update_workouts(edited_workouts)
-                    update_diet(edited_diet)
+                    update_workouts(user_id, edited_workouts)
+                    update_diet(user_id, edited_diet)
                     st.session_state.confirm_save = False
                     st.session_state.edit_mode = False
                     st.success("Changes saved successfully.")

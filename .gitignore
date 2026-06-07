@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .DS_Store
 fitness_tracker.db
+.streamlit/secrets.toml
